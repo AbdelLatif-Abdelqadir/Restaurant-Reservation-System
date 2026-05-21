@@ -1,8 +1,10 @@
 import { render, screen } from '@testing-library/react';
-import App from './App';
+import App from './app';
 
-test('renders learn react link', () => {
+test('renders reservation app with role options', () => {
   render(<App />);
-  const linkElement = screen.getByText(/learn react/i);
-  expect(linkElement).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: /Burger Bonanza/i })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Customer/i })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Staff/i })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Admin/i })).toBeInTheDocument();
 });

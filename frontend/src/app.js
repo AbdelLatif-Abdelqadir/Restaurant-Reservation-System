@@ -1,7 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 
 const API = "http://localhost:5000/api/bookings";
+const SETTINGS_API = "http://localhost:5000/api/settings";
 
+const ROLES = ["Customer", "Staff", "Admin"];
 const TIMES = ["12:00", "12:30", "13:00", "13:30", "18:00", "18:30", "19:00", "19:30", "20:00", "20:30", "21:00"];
 const PARTY_SIZES = [1, 2, 3, 4, 5, 6, 7, 8];
 const OCCASIONS = ["None", "Birthday", "Anniversary", "Business Dinner", "Date Night", "Graduation", "Other"];
@@ -93,7 +95,32 @@ const styles = `
 
   /* LAYOUT */
   .main { max-width: 1100px; margin: 0 auto; padding: 0 24px 80px; display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+  .main.single { grid-template-columns: 1fr; }
   @media (max-width: 768px) { .main { grid-template-columns: 1fr; } }
+
+  /* ROLE SWITCHER */
+  .role-switcher {
+    max-width: 720px;
+    margin: -20px auto 40px;
+    padding: 0 24px;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+  .role-btn {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: var(--ff-body);
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    padding: 14px 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .role-btn:hover { border-color: var(--gold-dim); color: var(--cream); }
+  .role-btn.active { background: var(--gold-glow); border-color: var(--gold); color: var(--gold); }
 
   /* PANEL */
   .panel {
@@ -159,6 +186,8 @@ const styles = `
   .select option { background: var(--surface); }
   .textarea { resize: vertical; min-height: 80px; }
   .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .compact-row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: end; margin-top: 14px; }
+  @media (max-width: 768px) { .compact-row, .role-switcher { grid-template-columns: 1fr; } }
 
   /* TIME GRID */
   .time-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
@@ -275,6 +304,23 @@ const styles = `
     flex-shrink: 0;
   }
   .delete-btn:hover { color: var(--danger); }
+  .action-btn {
+    background: transparent;
+    border: 1px solid var(--gold-dim);
+    color: var(--gold);
+    font-family: var(--ff-body);
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    padding: 12px 14px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .action-btn:hover { border-color: var(--gold); background: var(--gold-glow); }
+
+  /* ADMIN */
+  .settings-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  @media (max-width: 768px) { .settings-grid { grid-template-columns: 1fr; } }
 
   /* STATS */
   .stats { display: flex; gap: 24px; margin-bottom: 24px; }
@@ -307,6 +353,13 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
+  const [role, setRole] = useState("Customer");
+  const [editing, setEditing] = useState({});
+  const [settings, setSettings] = useState({
+    tableCapacity: 40,
+    openingTime: "12:00",
+    closingTime: "21:00"
+  });
 
   const [form, setForm] = useState({
     name: "", email: "", phone: "",
@@ -314,12 +367,12 @@ export default function App() {
     occasion: "None", notes: "", special_requests: ""
   });
 
-  const showToast = (msg, type = "success") => {
+  const showToast = useCallback((msg, type = "success") => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 4000);
-  };
+  }, []);
 
-  const fetchBookings = async () => {
+  const fetchBookings = useCallback(async () => {
     try {
       const res = await fetch(API);
       const data = await res.json();
@@ -327,9 +380,20 @@ export default function App() {
     } catch {
       showToast("Cannot connect to server. Showing local state.", "error");
     }
-  };
+  }, [showToast]);
 
-  useEffect(() => { fetchBookings(); }, []);
+  const fetchSettings = useCallback(async () => {
+    try {
+      const res = await fetch(SETTINGS_API);
+      const data = await res.json();
+      setSettings(data);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    fetchBookings();
+    fetchSettings();
+  }, [fetchBookings, fetchSettings]);
 
   const handleField = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -367,6 +431,54 @@ export default function App() {
     showToast("Reservation cancelled.", "error");
   };
 
+  const handleEditField = (id, key, value) => {
+    setEditing(prev => ({
+      ...prev,
+      [id]: { ...prev[id], [key]: value }
+    }));
+  };
+
+  const handleUpdateBooking = async (booking) => {
+    const changes = editing[booking.id] || {};
+    const updatedBooking = { ...booking, ...changes };
+
+    try {
+      const res = await fetch(`${API}/${booking.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(changes)
+      });
+      const data = await res.json();
+      setBookings(prev => prev.map(b => b.id === booking.id ? data.booking : b));
+    } catch {
+      setBookings(prev => prev.map(b => b.id === booking.id ? updatedBooking : b));
+    }
+
+    setEditing(prev => {
+      const next = { ...prev };
+      delete next[booking.id];
+      return next;
+    });
+    showToast("Reservation updated.");
+  };
+
+  const handleSettingsField = (key, value) => {
+    setSettings(prev => ({ ...prev, [key]: value }));
+  };
+
+  const handleSaveSettings = async () => {
+    try {
+      const res = await fetch(SETTINGS_API, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(settings)
+      });
+      const data = await res.json();
+      setSettings(data.settings);
+    } catch {}
+    showToast("Restaurant settings saved.");
+  };
+
   const filtered = bookings.filter(b =>
     b.name?.toLowerCase().includes(search.toLowerCase()) ||
     b.email?.toLowerCase().includes(search.toLowerCase()) ||
@@ -374,6 +486,7 @@ export default function App() {
   );
 
   const totalGuests = bookings.reduce((s, b) => s + (parseInt(b.party_size) || 0), 0);
+  const canManageReservations = role === "Staff" || role === "Admin";
 
   return (
     <>
@@ -385,13 +498,26 @@ export default function App() {
           <p className="hero-subtitle">Reserve your table</p>
         </header>
 
-        <main className="main">
+        <div className="role-switcher">
+          {ROLES.map(r => (
+            <button key={r} className={`role-btn ${role === r ? "active" : ""}`} onClick={() => setRole(r)}>
+              {r}
+            </button>
+          ))}
+        </div>
+
+        {toast && (
+          <div style={{ maxWidth: "1100px", margin: "0 auto 20px", padding: "0 24px" }}>
+            <div className={`toast ${toast.type}`}>{toast.msg}</div>
+          </div>
+        )}
+
+        <main className={`main ${role !== "Admin" ? "single" : ""}`}>
           {/* BOOKING FORM */}
+          {role === "Customer" && (
           <div className="panel">
             <h2 className="panel-title">Make a Reservation</h2>
             <p className="panel-sub">Complete the form below</p>
-
-            {toast && <div className={`toast ${toast.type}`}>{toast.msg}</div>}
 
             <div className="field">
               <label className="label">Full Name *</label>
@@ -453,8 +579,36 @@ export default function App() {
               <span>{loading ? "Confirming…" : "Confirm Reservation"}</span>
             </button>
           </div>
+          )}
 
           {/* RESERVATIONS */}
+          {role === "Admin" && (
+          <div className="panel">
+            <h2 className="panel-title">Admin Panel</h2>
+            <p className="panel-sub">Manage capacity and hours</p>
+
+            <div className="settings-grid">
+              <div className="field">
+                <label className="label">Table Capacity</label>
+                <input className="input" type="number" min="1" value={settings.tableCapacity} onChange={e => handleSettingsField("tableCapacity", e.target.value)} />
+              </div>
+              <div className="field">
+                <label className="label">Opening Time</label>
+                <input className="input" type="time" value={settings.openingTime} onChange={e => handleSettingsField("openingTime", e.target.value)} />
+              </div>
+              <div className="field">
+                <label className="label">Closing Time</label>
+                <input className="input" type="time" value={settings.closingTime} onChange={e => handleSettingsField("closingTime", e.target.value)} />
+              </div>
+            </div>
+
+            <button className="submit-btn" onClick={handleSaveSettings}>
+              <span>Save Settings</span>
+            </button>
+          </div>
+          )}
+
+          {canManageReservations && (
           <div>
             {/* STATS */}
             <div className="stats">
@@ -507,10 +661,26 @@ export default function App() {
                   {b.occasion && b.occasion !== "None" && <div className="occasion-tag">{b.occasion}</div>}
                   {b.special_requests && <p className="notes-text">"{b.special_requests}"</p>}
                   {b.notes && <p className="notes-text">Kitchen: {b.notes}</p>}
+                  <div className="compact-row">
+                    <div>
+                      <label className="label">Time</label>
+                      <select className="select" value={editing[b.id]?.time ?? b.time} onChange={e => handleEditField(b.id, "time", e.target.value)}>
+                        {TIMES.map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="label">Guests</label>
+                      <select className="select" value={editing[b.id]?.party_size ?? b.party_size} onChange={e => handleEditField(b.id, "party_size", e.target.value)}>
+                        {PARTY_SIZES.map(n => <option key={n} value={n}>{n}</option>)}
+                      </select>
+                    </div>
+                    <button className="action-btn" onClick={() => handleUpdateBooking(b)}>Update</button>
+                  </div>
                 </div>
               ))}
             </div>
           </div>
+          )}
         </main>
         <footer className="footer">Burger Bonanza · Reservations</footer>
       </div>
