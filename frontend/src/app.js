@@ -527,9 +527,15 @@ export default function App() {
         body: JSON.stringify(settings)
       });
       const data = await res.json();
+      if (!res.ok) {
+        showToast(data.message || "Could not save settings.", "error");
+        return;
+      }
       setSettings(data.settings);
-    } catch {}
-    showToast("Restaurant settings saved.");
+      showToast("Restaurant settings saved.");
+    } catch {
+      showToast("Cannot connect to server.", "error");
+    }
   };
 
   const filtered = bookings.filter(b =>
@@ -537,6 +543,8 @@ export default function App() {
     b.email?.toLowerCase().includes(search.toLowerCase()) ||
     b.date?.includes(search)
   );
+
+  const availableTimes = TIMES.filter(t => t >= settings.openingTime && t <= settings.closingTime);
 
   const totalGuests = bookings.reduce((s, b) => s + (parseInt(b.party_size) || 0), 0);
   const role = user?.role;
@@ -610,7 +618,7 @@ export default function App() {
             <div className="field">
               <label className="label">Preferred Time *</label>
               <div className="time-grid">
-                {TIMES.map(t => (
+                {availableTimes.map(t => (
                   <button key={t} className={`time-btn ${form.time === t ? "selected" : ""}`} onClick={() => handleField("time", t)}>{t}</button>
                 ))}
               </div>
@@ -727,7 +735,7 @@ export default function App() {
                     <div>
                       <label className="label">Time</label>
                       <select className="select" value={editing[b.id]?.time ?? b.time} onChange={e => handleEditField(b.id, "time", e.target.value)}>
-                        {TIMES.map(t => <option key={t} value={t}>{t}</option>)}
+                        {availableTimes.map(t => <option key={t} value={t}>{t}</option>)}
                       </select>
                     </div>
                     <div>

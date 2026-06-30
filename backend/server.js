@@ -32,12 +32,22 @@ function seatsBooked(date, time, excludeId = null) {
         .reduce((sum, b) => sum + (parseInt(b.party_size) || 0), 0);
 }
 
+function isWithinOperatingHours(time) {
+    return time >= settings.openingTime && time <= settings.closingTime;
+}
+
 app.post('/api/bookings', verifyToken, (req, res) => {
     const { date, time, party_size } = req.body;
     const partySize = parseInt(party_size);
 
     if (!date || !time || !Number.isInteger(partySize) || partySize <= 0) {
         return res.status(400).json({ message: "Date, time and a valid party size are required." });
+    }
+
+    if (!isWithinOperatingHours(time)) {
+        return res.status(400).json({
+            message: `We're only taking reservations between ${settings.openingTime} and ${settings.closingTime}.`
+        });
     }
 
     const booked = seatsBooked(date, time);
@@ -70,6 +80,12 @@ app.put('/api/bookings/:id', verifyToken, requireRole('Staff', 'Admin'), (req, r
         return res.status(400).json({ message: "Date, time and a valid party size are required." });
     }
 
+    if (!isWithinOperatingHours(updated.time)) {
+        return res.status(400).json({
+            message: `We're only taking reservations between ${settings.openingTime} and ${settings.closingTime}.`
+        });
+    }
+
     const booked = seatsBooked(updated.date, updated.time, bookingId);
     if (booked + partySize > settings.tableCapacity) {
         const remaining = Math.max(settings.tableCapacity - booked, 0);
@@ -85,7 +101,17 @@ app.put('/api/bookings/:id', verifyToken, requireRole('Staff', 'Admin'), (req, r
 });
 
 app.put('/api/settings', verifyToken, requireRole('Admin'), (req, res) => {
-    settings = { ...settings, ...req.body };
+    const updated = { ...settings, ...req.body };
+    const capacity = parseInt(updated.tableCapacity);
+
+    if (!Number.isInteger(capacity) || capacity <= 0) {
+        return res.status(400).json({ message: "Table capacity must be a positive number." });
+    }
+    if (!updated.openingTime || !updated.closingTime || updated.openingTime >= updated.closingTime) {
+        return res.status(400).json({ message: "Opening time must be earlier than closing time." });
+    }
+
+    settings = { ...updated, tableCapacity: capacity };
     res.json({ message: "Settings updated", settings });
 });
 
