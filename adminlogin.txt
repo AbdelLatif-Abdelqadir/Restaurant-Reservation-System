@@ -1,1 +1,2 @@
 Admin: admin@burgerbonanza.com / Admin123!
+Staff: staff@burgerbonanza.com / Staff123!

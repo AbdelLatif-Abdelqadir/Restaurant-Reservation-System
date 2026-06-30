@@ -3,6 +3,7 @@ import Auth from "./Auth";
 
 const API = "http://localhost:5000/api/bookings";
 const SETTINGS_API = "http://localhost:5000/api/settings";
+const WAITLIST_API = "http://localhost:5000/api/waitlist";
 
 const TIMES = ["12:00", "12:30", "13:00", "13:30", "18:00", "18:30", "19:00", "19:30", "20:00", "20:30", "21:00"];
 const PARTY_SIZES = [1, 2, 3, 4, 5, 6, 7, 8];
@@ -97,6 +98,7 @@ const styles = `
   /* LAYOUT */
   .main { max-width: 1100px; margin: 0 auto; padding: 0 24px 80px; display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
   .main.single { grid-template-columns: 1fr; }
+  .main > * { min-width: 0; }
   @media (max-width: 768px) { .main { grid-template-columns: 1fr; } }
 
   /* ROLE SWITCHER */
@@ -344,6 +346,71 @@ const styles = `
   /* DIVIDER */
   .divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
 
+  /* VIEW TABS */
+  .view-tabs { display: flex; gap: 8px; margin-bottom: 20px; }
+  .view-tab {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: var(--ff-body);
+    font-size: 11px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    padding: 10px 16px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .view-tab:hover { border-color: var(--gold-dim); color: var(--cream); }
+  .view-tab.active { background: var(--gold-glow); border-color: var(--gold); color: var(--gold); }
+
+  /* DAY VIEW */
+  .day-row { border: 1px solid var(--border); margin-bottom: 12px; }
+  .day-row-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 16px;
+    background: var(--surface);
+  }
+  .day-row-time { font-family: var(--ff-display); font-size: 16px; color: var(--gold); }
+  .day-row-occupancy { font-size: 11px; letter-spacing: 0.1em; color: var(--muted); text-transform: uppercase; }
+  .day-row-occupancy.full { color: var(--danger); }
+  .day-row-bookings { padding: 4px 16px 12px; }
+  .day-row-empty { padding: 12px 16px; font-size: 12px; color: var(--muted); font-style: italic; }
+
+  /* WEEK VIEW */
+  .week-table-wrap { overflow-x: auto; }
+  .week-table { border-collapse: collapse; width: 100%; min-width: 640px; }
+  .week-table th, .week-table td { border: 1px solid var(--border); padding: 8px; text-align: center; font-size: 12px; }
+  .week-table th { background: var(--surface); color: var(--gold-dim); font-weight: 300; letter-spacing: 0.08em; }
+  .week-time-label { color: var(--muted); white-space: nowrap; }
+  .week-cell { cursor: pointer; color: var(--muted); transition: background 0.15s; }
+  .week-cell:hover { background: var(--gold-glow); }
+  .week-cell.full { color: var(--danger); font-weight: 400; }
+  .week-cell.has-bookings { color: var(--cream); }
+
+  /* WAITLIST */
+  .waitlist-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    border: 1px solid var(--border);
+    margin-bottom: 10px;
+  }
+  .waitlist-info { font-size: 13px; color: var(--cream); }
+  .waitlist-meta { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .waitlist-actions { display: flex; gap: 8px; flex-shrink: 0; }
+  .waitlist-prompt {
+    border: 1px solid var(--gold-dim);
+    background: var(--gold-glow);
+    padding: 16px;
+    margin-bottom: 20px;
+  }
+  .waitlist-prompt p { font-size: 13px; color: var(--cream); margin-bottom: 12px; }
+  .waitlist-prompt-actions { display: flex; gap: 10px; }
+
   /* FOOTER */
   .footer {
     text-align: center;
@@ -375,6 +442,11 @@ export default function App() {
     openingTime: "12:00",
     closingTime: "21:00"
   });
+  const [waitlist, setWaitlist] = useState([]);
+  const [waitlistPrompt, setWaitlistPrompt] = useState(null);
+  const [viewMode, setViewMode] = useState("list");
+  const [dayDate, setDayDate] = useState(today);
+  const [weekStart, setWeekStart] = useState(today);
 
   const [form, setForm] = useState({
     name: "", email: "", phone: "",
@@ -393,6 +465,7 @@ export default function App() {
     setToken(null);
     setUser(null);
     setBookings([]);
+    setWaitlist([]);
   }, []);
 
   const handleAuthenticated = useCallback((newToken, newUser) => {
@@ -432,12 +505,21 @@ export default function App() {
     } catch {}
   }, []);
 
+  const fetchWaitlist = useCallback(async () => {
+    try {
+      const res = await authedFetch(WAITLIST_API);
+      const data = await res.json();
+      setWaitlist(Array.isArray(data) ? data : []);
+    } catch {}
+  }, [authedFetch]);
+
   useEffect(() => {
     if (user) {
       fetchBookings();
       fetchSettings();
+      fetchWaitlist();
     }
-  }, [user, fetchBookings, fetchSettings]);
+  }, [user, fetchBookings, fetchSettings, fetchWaitlist]);
 
   const handleField = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -448,6 +530,7 @@ export default function App() {
       return;
     }
     setLoading(true);
+    setWaitlistPrompt(null);
     try {
       const res = await authedFetch(API, {
         method: "POST",
@@ -457,6 +540,9 @@ export default function App() {
       const data = await res.json();
       if (!res.ok) {
         showToast(data.message || "Could not complete the reservation.", "error");
+        if (data.waitlistAvailable) {
+          setWaitlistPrompt({ message: data.message, payload: { ...form } });
+        }
         return;
       }
       setBookings(prev => [...prev, data.booking]);
@@ -469,6 +555,52 @@ export default function App() {
       showToast(`Reservation saved locally (server offline).`);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleJoinWaitlist = async () => {
+    if (!waitlistPrompt) return;
+    try {
+      const res = await authedFetch(WAITLIST_API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(waitlistPrompt.payload)
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.message || "Could not join the waitlist.", "error");
+        return;
+      }
+      setWaitlist(prev => [...prev, data.entry]);
+      setWaitlistPrompt(null);
+      showToast(`Added to the waitlist for ${waitlistPrompt.payload.time} on ${waitlistPrompt.payload.date}.`);
+      setForm({ name: "", email: "", phone: "", date: "", time: "", party_size: "", occasion: "None", notes: "", special_requests: "" });
+    } catch {
+      showToast("Cannot connect to server.", "error");
+    }
+  };
+
+  const handleRemoveWaitlist = async (id) => {
+    try {
+      await authedFetch(`${WAITLIST_API}/${id}`, { method: "DELETE" });
+    } catch {}
+    setWaitlist(prev => prev.filter(w => w.id !== id));
+    showToast("Removed from waitlist.", "error");
+  };
+
+  const handleSeatFromWaitlist = async (entry) => {
+    try {
+      const res = await authedFetch(`${WAITLIST_API}/${entry.id}/seat`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast(data.message || "Could not seat this party yet.", "error");
+        return;
+      }
+      setBookings(prev => [...prev, data.booking]);
+      setWaitlist(prev => prev.filter(w => w.id !== entry.id));
+      showToast(`Seated ${entry.name} from the waitlist.`);
+    } catch {
+      showToast("Cannot connect to server.", "error");
     }
   };
 
@@ -550,6 +682,60 @@ export default function App() {
   const role = user?.role;
   const canManageReservations = role === "Staff" || role === "Admin";
 
+  const addDays = (dateStr, n) => {
+    const d = new Date(`${dateStr}T00:00:00`);
+    d.setDate(d.getDate() + n);
+    return d.toISOString().split("T")[0];
+  };
+
+  const seatsForSlot = (date, time) =>
+    bookings.filter(b => b.date === date && b.time === time).reduce((s, b) => s + (parseInt(b.party_size) || 0), 0);
+
+  const weekDates = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+
+  const dayRows = availableTimes.map(t => ({
+    time: t,
+    bookings: filtered.filter(b => b.date === dayDate && b.time === t),
+    occupied: seatsForSlot(dayDate, t)
+  }));
+
+  const renderBookingCard = (b) => (
+    <div className="booking-card" key={b.id}>
+      <div className="booking-header">
+        <div>
+          <div className="booking-name">{b.name}</div>
+          <div className="booking-id">#{String(b.id).padStart(4, "0")}</div>
+        </div>
+        <button className="delete-btn" onClick={() => handleDelete(b.id)} title="Cancel reservation">×</button>
+      </div>
+      <div className="booking-meta">
+        <span className="meta-chip"><span className="icon">📅</span>{b.date}</span>
+        <span className="meta-chip"><span className="icon">🕐</span>{b.time}</span>
+        <span className="meta-chip"><span className="icon">👤</span>{b.party_size} {parseInt(b.party_size) === 1 ? "guest" : "guests"}</span>
+        <span className="meta-chip"><span className="icon">✉</span>{b.email}</span>
+        <span className="meta-chip"><span className="icon">📞</span>{b.phone}</span>
+      </div>
+      {b.occasion && b.occasion !== "None" && <div className="occasion-tag">{b.occasion}</div>}
+      {b.special_requests && <p className="notes-text">"{b.special_requests}"</p>}
+      {b.notes && <p className="notes-text">Kitchen: {b.notes}</p>}
+      <div className="compact-row">
+        <div>
+          <label className="label">Time</label>
+          <select className="select" value={editing[b.id]?.time ?? b.time} onChange={e => handleEditField(b.id, "time", e.target.value)}>
+            {availableTimes.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="label">Guests</label>
+          <select className="select" value={editing[b.id]?.party_size ?? b.party_size} onChange={e => handleEditField(b.id, "party_size", e.target.value)}>
+            {PARTY_SIZES.map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </div>
+        <button className="action-btn" onClick={() => handleUpdateBooking(b)}>Update</button>
+      </div>
+    </div>
+  );
+
   return (
     <>
       <style>{styles}</style>
@@ -584,6 +770,16 @@ export default function App() {
           <div className="panel">
             <h2 className="panel-title">Make a Reservation</h2>
             <p className="panel-sub">Complete the form below</p>
+
+            {waitlistPrompt && (
+              <div className="waitlist-prompt">
+                <p>{waitlistPrompt.message} Would you like to join the waitlist for this slot?</p>
+                <div className="waitlist-prompt-actions">
+                  <button className="action-btn" onClick={handleJoinWaitlist}>Join Waitlist</button>
+                  <button className="action-btn" onClick={() => setWaitlistPrompt(null)}>Dismiss</button>
+                </div>
+              </div>
+            )}
 
             <div className="field">
               <label className="label">Full Name *</label>
@@ -694,60 +890,129 @@ export default function App() {
                 <div className="stat-value">{bookings.filter(b => b.occasion && b.occasion !== "None").length}</div>
                 <div className="stat-label">Occasions</div>
               </div>
+              <div className="stat">
+                <div className="stat-value">{waitlist.length}</div>
+                <div className="stat-label">Waitlisted</div>
+              </div>
             </div>
+
+            {waitlist.length > 0 && (
+              <div className="panel" style={{ marginBottom: 32 }}>
+                <h2 className="panel-title">Waitlist</h2>
+                <p className="panel-sub">Seat a party once a slot opens up</p>
+                {waitlist.map(w => (
+                  <div className="waitlist-item" key={w.id}>
+                    <div>
+                      <div className="waitlist-info">{w.name} · {w.party_size} {parseInt(w.party_size) === 1 ? "guest" : "guests"}</div>
+                      <div className="waitlist-meta">{w.date} at {w.time}</div>
+                    </div>
+                    <div className="waitlist-actions">
+                      <button className="action-btn" onClick={() => handleSeatFromWaitlist(w)}>Seat Now</button>
+                      <button className="delete-btn" onClick={() => handleRemoveWaitlist(w.id)} title="Remove from waitlist">×</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
 
             <div className="panel" style={{ maxHeight: "680px", overflowY: "auto" }}>
               <h2 className="panel-title">Reservations</h2>
               <p className="panel-sub">Upcoming bookings</p>
 
-              <div className="search-wrap">
-                <span className="search-icon">⌕</span>
-                <input className="input" placeholder="Search by name, email or date…" value={search} onChange={e => setSearch(e.target.value)} />
+              <div className="view-tabs">
+                <button className={`view-tab ${viewMode === "list" ? "active" : ""}`} onClick={() => setViewMode("list")}>List</button>
+                <button className={`view-tab ${viewMode === "day" ? "active" : ""}`} onClick={() => setViewMode("day")}>Day</button>
+                <button className={`view-tab ${viewMode === "week" ? "active" : ""}`} onClick={() => setViewMode("week")}>Week</button>
               </div>
+
+              {viewMode === "list" && (
+                <div className="search-wrap">
+                  <span className="search-icon">⌕</span>
+                  <input className="input" placeholder="Search by name, email or date…" value={search} onChange={e => setSearch(e.target.value)} />
+                </div>
+              )}
+
+              {viewMode === "day" && (
+                <div className="field">
+                  <label className="label">Date</label>
+                  <input className="input" type="date" value={dayDate} onChange={e => setDayDate(e.target.value)} />
+                </div>
+              )}
+
+              {viewMode === "week" && (
+                <div className="field">
+                  <label className="label">Week Starting</label>
+                  <input className="input" type="date" value={weekStart} onChange={e => setWeekStart(e.target.value)} />
+                </div>
+              )}
 
               <hr className="divider" />
 
-              {filtered.length === 0 ? (
-                <div className="empty-state">
-                  <div className="empty-icon">🕯</div>
-                  <p className="empty-text">{search ? "No results found." : "No reservations yet."}</p>
+              {viewMode === "list" && (
+                filtered.length === 0 ? (
+                  <div className="empty-state">
+                    <div className="empty-icon">🕯</div>
+                    <p className="empty-text">{search ? "No results found." : "No reservations yet."}</p>
+                  </div>
+                ) : filtered.map(renderBookingCard)
+              )}
+
+              {viewMode === "day" && (
+                dayRows.every(row => row.bookings.length === 0) ? (
+                  <div className="empty-state">
+                    <div className="empty-icon">🕯</div>
+                    <p className="empty-text">No reservations on {dayDate}.</p>
+                  </div>
+                ) : dayRows.map(row => (
+                  <div className="day-row" key={row.time}>
+                    <div className="day-row-header">
+                      <span className="day-row-time">{row.time}</span>
+                      <span className={`day-row-occupancy ${row.occupied >= settings.tableCapacity ? "full" : ""}`}>
+                        {row.occupied} / {settings.tableCapacity} seated
+                      </span>
+                    </div>
+                    {row.bookings.length === 0 ? (
+                      <p className="day-row-empty">No reservations at this time.</p>
+                    ) : (
+                      <div className="day-row-bookings">{row.bookings.map(renderBookingCard)}</div>
+                    )}
+                  </div>
+                ))
+              )}
+
+              {viewMode === "week" && (
+                <div className="week-table-wrap">
+                  <table className="week-table">
+                    <thead>
+                      <tr>
+                        <th></th>
+                        {weekDates.map(d => <th key={d}>{d}</th>)}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {availableTimes.map(t => (
+                        <tr key={t}>
+                          <td className="week-time-label">{t}</td>
+                          {weekDates.map(d => {
+                            const occupied = seatsForSlot(d, t);
+                            const full = occupied >= settings.tableCapacity;
+                            return (
+                              <td
+                                key={d}
+                                className={`week-cell ${full ? "full" : occupied > 0 ? "has-bookings" : ""}`}
+                                title={`${occupied} / ${settings.tableCapacity} seated — click to view this day`}
+                                onClick={() => { setDayDate(d); setViewMode("day"); }}
+                              >
+                                {occupied}/{settings.tableCapacity}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-              ) : filtered.map(b => (
-                <div className="booking-card" key={b.id}>
-                  <div className="booking-header">
-                    <div>
-                      <div className="booking-name">{b.name}</div>
-                      <div className="booking-id">#{String(b.id).padStart(4, "0")}</div>
-                    </div>
-                    <button className="delete-btn" onClick={() => handleDelete(b.id)} title="Cancel reservation">×</button>
-                  </div>
-                  <div className="booking-meta">
-                    <span className="meta-chip"><span className="icon">📅</span>{b.date}</span>
-                    <span className="meta-chip"><span className="icon">🕐</span>{b.time}</span>
-                    <span className="meta-chip"><span className="icon">👤</span>{b.party_size} {parseInt(b.party_size) === 1 ? "guest" : "guests"}</span>
-                    <span className="meta-chip"><span className="icon">✉</span>{b.email}</span>
-                    <span className="meta-chip"><span className="icon">📞</span>{b.phone}</span>
-                  </div>
-                  {b.occasion && b.occasion !== "None" && <div className="occasion-tag">{b.occasion}</div>}
-                  {b.special_requests && <p className="notes-text">"{b.special_requests}"</p>}
-                  {b.notes && <p className="notes-text">Kitchen: {b.notes}</p>}
-                  <div className="compact-row">
-                    <div>
-                      <label className="label">Time</label>
-                      <select className="select" value={editing[b.id]?.time ?? b.time} onChange={e => handleEditField(b.id, "time", e.target.value)}>
-                        {availableTimes.map(t => <option key={t} value={t}>{t}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="label">Guests</label>
-                      <select className="select" value={editing[b.id]?.party_size ?? b.party_size} onChange={e => handleEditField(b.id, "party_size", e.target.value)}>
-                        {PARTY_SIZES.map(n => <option key={n} value={n}>{n}</option>)}
-                      </select>
-                    </div>
-                    <button className="action-btn" onClick={() => handleUpdateBooking(b)}>Update</button>
-                  </div>
-                </div>
-              ))}
+              )}
             </div>
           </div>
           )}

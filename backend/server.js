@@ -12,14 +12,23 @@ app.use(express.json());
 app.use('/api/auth', authRouter);
 
 let bookings = [];
+let waitlist = [];
+let nextWaitlistId = 1;
 let settings = {
     tableCapacity: 40,
     openingTime: "12:00",
     closingTime: "21:00"
 };
 
+function isStaffOrAdmin(role) {
+    return role === 'Staff' || role === 'Admin';
+}
+
 app.get('/api/bookings', verifyToken, (req, res) => {
-    res.json(bookings);
+    if (isStaffOrAdmin(req.user.role)) {
+        return res.json(bookings);
+    }
+    res.json(bookings.filter(b => b.customerId === req.user.id));
 });
 
 app.get('/api/settings', (req, res) => {
@@ -56,7 +65,8 @@ app.post('/api/bookings', verifyToken, (req, res) => {
         return res.status(409).json({
             message: remaining > 0
                 ? `Only ${remaining} seat(s) left for ${time} on ${date}.`
-                : `${time} on ${date} is fully booked.`
+                : `${time} on ${date} is fully booked.`,
+            waitlistAvailable: true
         });
     }
 
@@ -118,6 +128,73 @@ app.put('/api/settings', verifyToken, requireRole('Admin'), (req, res) => {
 app.delete('/api/bookings/:id', verifyToken, requireRole('Staff', 'Admin'), (req, res) => {
     bookings = bookings.filter(b => b.id !== parseInt(req.params.id));
     res.json({ message: "Booking deleted" });
+});
+
+app.get('/api/waitlist', verifyToken, (req, res) => {
+    if (isStaffOrAdmin(req.user.role)) {
+        return res.json(waitlist);
+    }
+    res.json(waitlist.filter(w => w.customerId === req.user.id));
+});
+
+app.post('/api/waitlist', verifyToken, (req, res) => {
+    const { date, time, party_size } = req.body;
+    const partySize = parseInt(party_size);
+
+    if (!date || !time || !Number.isInteger(partySize) || partySize <= 0) {
+        return res.status(400).json({ message: "Date, time and a valid party size are required." });
+    }
+    if (!isWithinOperatingHours(time)) {
+        return res.status(400).json({
+            message: `We're only taking reservations between ${settings.openingTime} and ${settings.closingTime}.`
+        });
+    }
+
+    const entry = { id: nextWaitlistId++, ...req.body, customerId: req.user.id, createdAt: new Date().toISOString() };
+    waitlist.push(entry);
+    res.status(201).json({ message: "Added to the waitlist.", entry });
+});
+
+app.delete('/api/waitlist/:id', verifyToken, (req, res) => {
+    const id = parseInt(req.params.id);
+    const entry = waitlist.find(w => w.id === id);
+
+    if (!entry) {
+        return res.status(404).json({ message: "Waitlist entry not found." });
+    }
+    if (entry.customerId !== req.user.id && !isStaffOrAdmin(req.user.role)) {
+        return res.status(403).json({ message: "You do not have permission to do that." });
+    }
+
+    waitlist = waitlist.filter(w => w.id !== id);
+    res.json({ message: "Removed from waitlist." });
+});
+
+// Staff/Admin convert a waitlist entry into a confirmed booking once a spot opens up.
+app.post('/api/waitlist/:id/seat', verifyToken, requireRole('Staff', 'Admin'), (req, res) => {
+    const id = parseInt(req.params.id);
+    const entry = waitlist.find(w => w.id === id);
+
+    if (!entry) {
+        return res.status(404).json({ message: "Waitlist entry not found." });
+    }
+
+    const partySize = parseInt(entry.party_size);
+    const booked = seatsBooked(entry.date, entry.time);
+    if (booked + partySize > settings.tableCapacity) {
+        const remaining = Math.max(settings.tableCapacity - booked, 0);
+        return res.status(409).json({
+            message: remaining > 0
+                ? `Only ${remaining} seat(s) left for ${entry.time} on ${entry.date}.`
+                : `${entry.time} on ${entry.date} is still fully booked.`
+        });
+    }
+
+    const { id: waitlistId, createdAt, ...bookingData } = entry;
+    const newBooking = { id: bookings.length + 1, ...bookingData };
+    bookings.push(newBooking);
+    waitlist = waitlist.filter(w => w.id !== id);
+    res.status(201).json({ message: "Seated from waitlist.", booking: newBooking });
 });
 
 app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
