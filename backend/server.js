@@ -197,4 +197,8 @@ app.post('/api/waitlist/:id/seat', verifyToken, requireRole('Staff', 'Admin'), (
     res.status(201).json({ message: "Seated from waitlist.", booking: newBooking });
 });
 
-app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
+if (require.main === module) {
+    app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
+}
+
+module.exports = app;

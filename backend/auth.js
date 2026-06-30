@@ -23,7 +23,10 @@ async function seedUsers() {
         role: 'Staff'
     });
 }
-seedUsers();
+
+// Exposed so tests can wait for the seeded Admin/Staff accounts to exist
+// before logging in with them (bcrypt hashing is async).
+const usersReady = seedUsers();
 
 function toPublicUser(user) {
     const { passwordHash, ...publicUser } = user;
@@ -89,3 +92,4 @@ router.get('/me', verifyToken, (req, res) => {
 });
 
 module.exports = router;
+module.exports.ready = usersReady;
