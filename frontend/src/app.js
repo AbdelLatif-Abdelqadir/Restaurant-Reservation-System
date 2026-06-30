@@ -455,6 +455,10 @@ export default function App() {
         body: JSON.stringify(form)
       });
       const data = await res.json();
+      if (!res.ok) {
+        showToast(data.message || "Could not complete the reservation.", "error");
+        return;
+      }
       setBookings(prev => [...prev, data.booking]);
       showToast(`Reservation confirmed for ${form.name}.`);
       setForm({ name: "", email: "", phone: "", date: "", time: "", party_size: "", occasion: "None", notes: "", special_requests: "" });
@@ -463,8 +467,9 @@ export default function App() {
       const local = { id: Date.now(), ...form };
       setBookings(prev => [...prev, local]);
       showToast(`Reservation saved locally (server offline).`);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const handleDelete = async (id) => {
@@ -493,6 +498,10 @@ export default function App() {
         body: JSON.stringify(changes)
       });
       const data = await res.json();
+      if (!res.ok) {
+        showToast(data.message || "Could not update reservation.", "error");
+        return;
+      }
       setBookings(prev => prev.map(b => b.id === booking.id ? data.booking : b));
     } catch {
       setBookings(prev => prev.map(b => b.id === booking.id ? updatedBooking : b));

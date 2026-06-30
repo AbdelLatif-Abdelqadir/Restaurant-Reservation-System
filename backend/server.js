@@ -26,7 +26,30 @@ app.get('/api/settings', (req, res) => {
     res.json(settings);
 });
 
+function seatsBooked(date, time, excludeId = null) {
+    return bookings
+        .filter(b => b.date === date && b.time === time && b.id !== excludeId)
+        .reduce((sum, b) => sum + (parseInt(b.party_size) || 0), 0);
+}
+
 app.post('/api/bookings', verifyToken, (req, res) => {
+    const { date, time, party_size } = req.body;
+    const partySize = parseInt(party_size);
+
+    if (!date || !time || !Number.isInteger(partySize) || partySize <= 0) {
+        return res.status(400).json({ message: "Date, time and a valid party size are required." });
+    }
+
+    const booked = seatsBooked(date, time);
+    if (booked + partySize > settings.tableCapacity) {
+        const remaining = Math.max(settings.tableCapacity - booked, 0);
+        return res.status(409).json({
+            message: remaining > 0
+                ? `Only ${remaining} seat(s) left for ${time} on ${date}.`
+                : `${time} on ${date} is fully booked.`
+        });
+    }
+
     const newBooking = { id: bookings.length + 1, ...req.body, customerId: req.user.id };
     bookings.push(newBooking);
     res.status(201).json({ message: "Booking successful!", booking: newBooking });
@@ -40,7 +63,24 @@ app.put('/api/bookings/:id', verifyToken, requireRole('Staff', 'Admin'), (req, r
         return res.status(404).json({ message: "Booking not found" });
     }
 
-    bookings[bookingIndex] = { ...bookings[bookingIndex], ...req.body, id: bookingId };
+    const updated = { ...bookings[bookingIndex], ...req.body, id: bookingId };
+    const partySize = parseInt(updated.party_size);
+
+    if (!updated.date || !updated.time || !Number.isInteger(partySize) || partySize <= 0) {
+        return res.status(400).json({ message: "Date, time and a valid party size are required." });
+    }
+
+    const booked = seatsBooked(updated.date, updated.time, bookingId);
+    if (booked + partySize > settings.tableCapacity) {
+        const remaining = Math.max(settings.tableCapacity - booked, 0);
+        return res.status(409).json({
+            message: remaining > 0
+                ? `Only ${remaining} seat(s) left for ${updated.time} on ${updated.date}.`
+                : `${updated.time} on ${updated.date} is fully booked.`
+        });
+    }
+
+    bookings[bookingIndex] = updated;
     res.json({ message: "Booking updated", booking: bookings[bookingIndex] });
 });
 
