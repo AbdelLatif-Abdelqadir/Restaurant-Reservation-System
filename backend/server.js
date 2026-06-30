@@ -170,7 +170,6 @@ app.delete('/api/waitlist/:id', verifyToken, (req, res) => {
     res.json({ message: "Removed from waitlist." });
 });
 
-// Staff/Admin convert a waitlist entry into a confirmed booking once a spot opens up.
 app.post('/api/waitlist/:id/seat', verifyToken, requireRole('Staff', 'Admin'), (req, res) => {
     const id = parseInt(req.params.id);
     const entry = waitlist.find(w => w.id === id);
@@ -195,6 +194,18 @@ app.post('/api/waitlist/:id/seat', verifyToken, requireRole('Staff', 'Admin'), (
     bookings.push(newBooking);
     waitlist = waitlist.filter(w => w.id !== id);
     res.status(201).json({ message: "Seated from waitlist.", booking: newBooking });
+});
+
+app.use((req, res) => {
+    res.status(404).json({ message: "Not found." });
+});
+
+app.use((err, req, res, next) => {
+    if (err.type === 'entity.parse.failed' || err instanceof SyntaxError) {
+        return res.status(400).json({ message: "Invalid JSON in request body." });
+    }
+    console.error(err);
+    res.status(err.status || 500).json({ message: "Something went wrong on our end." });
 });
 
 if (require.main === module) {
