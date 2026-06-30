@@ -1,10 +1,10 @@
 import { render, screen } from '@testing-library/react';
 import App from './app';
 
-test('renders reservation app with role options', () => {
+test('shows the sign-in screen when no one is logged in', () => {
   render(<App />);
   expect(screen.getByRole('heading', { name: /Burger Bonanza/i })).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: /Customer/i })).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: /Staff/i })).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: /Admin/i })).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: /Sign In/i })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Sign In/i })).toBeInTheDocument();
+  expect(screen.getByText(/Don't have an account/i)).toBeInTheDocument();
 });

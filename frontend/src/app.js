@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
+import Auth from "./Auth";
 
 const API = "http://localhost:5000/api/bookings";
 const SETTINGS_API = "http://localhost:5000/api/settings";
 
-const ROLES = ["Customer", "Staff", "Admin"];
 const TIMES = ["12:00", "12:30", "13:00", "13:30", "18:00", "18:30", "19:00", "19:30", "20:00", "20:30", "21:00"];
 const PARTY_SIZES = [1, 2, 3, 4, 5, 6, 7, 8];
 const OCCASIONS = ["None", "Birthday", "Anniversary", "Business Dinner", "Date Night", "Graduation", "Other"];
@@ -14,6 +14,7 @@ const styles = `
   @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Jost:wght@200;300;400&display=swap');
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  ::selection { background: rgba(201,168,76,0.35); color: var(--cream); }
 
   :root {
     --bg: #0d0b08;
@@ -182,6 +183,13 @@ const styles = `
     border-color: var(--gold-dim);
     box-shadow: 0 0 0 3px var(--gold-glow);
   }
+  .input[type="date"] { color-scheme: dark; }
+  .input[type="date"]::-webkit-datetime-edit { color: var(--cream); }
+  .input[type="date"]::-webkit-datetime-edit-fields-wrapper { background: transparent; }
+  .input[type="date"]::-webkit-datetime-edit-text,
+  .input[type="date"]::-webkit-datetime-edit-month-field,
+  .input[type="date"]::-webkit-datetime-edit-day-field,
+  .input[type="date"]::-webkit-datetime-edit-year-field { color: var(--cream); }
   .select { cursor: pointer; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%238a6f32' fill='none' stroke-width='1.5'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 14px center; padding-right: 36px; }
   .select option { background: var(--surface); }
   .textarea { resize: vertical; min-height: 80px; }
@@ -353,7 +361,14 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
-  const [role, setRole] = useState("Customer");
+  const [token, setToken] = useState(() => localStorage.getItem("token") || null);
+  const [user, setUser] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("user"));
+    } catch {
+      return null;
+    }
+  });
   const [editing, setEditing] = useState({});
   const [settings, setSettings] = useState({
     tableCapacity: 40,
@@ -372,15 +387,42 @@ export default function App() {
     setTimeout(() => setToast(null), 4000);
   }, []);
 
+  const handleLogout = useCallback(() => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    setToken(null);
+    setUser(null);
+    setBookings([]);
+  }, []);
+
+  const handleAuthenticated = useCallback((newToken, newUser) => {
+    localStorage.setItem("token", newToken);
+    localStorage.setItem("user", JSON.stringify(newUser));
+    setToken(newToken);
+    setUser(newUser);
+  }, []);
+
+  // Adds the JWT to every protected request and logs out automatically
+  // if the token is missing/expired (server returns 401).
+  const authedFetch = useCallback((url, options = {}) => {
+    return fetch(url, {
+      ...options,
+      headers: { ...(options.headers || {}), Authorization: `Bearer ${token}` }
+    }).then(res => {
+      if (res.status === 401) handleLogout();
+      return res;
+    });
+  }, [token, handleLogout]);
+
   const fetchBookings = useCallback(async () => {
     try {
-      const res = await fetch(API);
+      const res = await authedFetch(API);
       const data = await res.json();
-      setBookings(data);
+      setBookings(Array.isArray(data) ? data : []);
     } catch {
       showToast("Cannot connect to server. Showing local state.", "error");
     }
-  }, [showToast]);
+  }, [authedFetch, showToast]);
 
   const fetchSettings = useCallback(async () => {
     try {
@@ -391,9 +433,11 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    fetchBookings();
-    fetchSettings();
-  }, [fetchBookings, fetchSettings]);
+    if (user) {
+      fetchBookings();
+      fetchSettings();
+    }
+  }, [user, fetchBookings, fetchSettings]);
 
   const handleField = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -405,7 +449,7 @@ export default function App() {
     }
     setLoading(true);
     try {
-      const res = await fetch(API, {
+      const res = await authedFetch(API, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form)
@@ -425,7 +469,7 @@ export default function App() {
 
   const handleDelete = async (id) => {
     try {
-      await fetch(`${API}/${id}`, { method: "DELETE" });
+      await authedFetch(`${API}/${id}`, { method: "DELETE" });
     } catch {}
     setBookings(prev => prev.filter(b => b.id !== id));
     showToast("Reservation cancelled.", "error");
@@ -443,7 +487,7 @@ export default function App() {
     const updatedBooking = { ...booking, ...changes };
 
     try {
-      const res = await fetch(`${API}/${booking.id}`, {
+      const res = await authedFetch(`${API}/${booking.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(changes)
@@ -468,7 +512,7 @@ export default function App() {
 
   const handleSaveSettings = async () => {
     try {
-      const res = await fetch(SETTINGS_API, {
+      const res = await authedFetch(SETTINGS_API, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(settings)
@@ -486,6 +530,7 @@ export default function App() {
   );
 
   const totalGuests = bookings.reduce((s, b) => s + (parseInt(b.party_size) || 0), 0);
+  const role = user?.role;
   const canManageReservations = role === "Staff" || role === "Admin";
 
   return (
@@ -495,16 +540,17 @@ export default function App() {
         <header className="hero">
           <p className="hero-eyebrow">Reservations</p>
           <h1 className="hero-title">Burger <em>Bonanza</em></h1>
-          <p className="hero-subtitle">Reserve your table</p>
+          <p className="hero-subtitle">{user ? "Reserve your table" : "Sign in to reserve your table"}</p>
         </header>
 
-        <div className="role-switcher">
-          {ROLES.map(r => (
-            <button key={r} className={`role-btn ${role === r ? "active" : ""}`} onClick={() => setRole(r)}>
-              {r}
-            </button>
-          ))}
-        </div>
+        {user && (
+          <div className="role-switcher" style={{ gridTemplateColumns: "1fr auto" }}>
+            <div className="role-btn active" style={{ cursor: "default", textAlign: "left" }}>
+              {user.name} · {user.role}
+            </div>
+            <button className="role-btn" onClick={handleLogout}>Logout</button>
+          </div>
+        )}
 
         {toast && (
           <div style={{ maxWidth: "1100px", margin: "0 auto 20px", padding: "0 24px" }}>
@@ -512,6 +558,9 @@ export default function App() {
           </div>
         )}
 
+        {!user ? (
+          <Auth onAuthenticated={handleAuthenticated} />
+        ) : (
         <main className={`main ${role !== "Admin" ? "single" : ""}`}>
           {/* BOOKING FORM */}
           {role === "Customer" && (
@@ -594,11 +643,15 @@ export default function App() {
               </div>
               <div className="field">
                 <label className="label">Opening Time</label>
-                <input className="input" type="time" value={settings.openingTime} onChange={e => handleSettingsField("openingTime", e.target.value)} />
+                <select className="select" value={settings.openingTime} onChange={e => handleSettingsField("openingTime", e.target.value)}>
+                  {TIMES.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
               </div>
               <div className="field">
                 <label className="label">Closing Time</label>
-                <input className="input" type="time" value={settings.closingTime} onChange={e => handleSettingsField("closingTime", e.target.value)} />
+                <select className="select" value={settings.closingTime} onChange={e => handleSettingsField("closingTime", e.target.value)}>
+                  {TIMES.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
               </div>
             </div>
 
@@ -682,6 +735,7 @@ export default function App() {
           </div>
           )}
         </main>
+        )}
         <footer className="footer">Burger Bonanza · Reservations</footer>
       </div>
     </>

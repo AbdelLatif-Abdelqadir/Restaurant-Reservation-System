@@ -1,10 +1,15 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const authRouter = require('./auth');
+const { verifyToken, requireRole } = require('./authMiddleware');
 const app = express();
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
 
 app.use(cors());
 app.use(express.json());
+
+app.use('/api/auth', authRouter);
 
 let bookings = [];
 let settings = {
@@ -13,7 +18,7 @@ let settings = {
     closingTime: "21:00"
 };
 
-app.get('/api/bookings', (req, res) => {
+app.get('/api/bookings', verifyToken, (req, res) => {
     res.json(bookings);
 });
 
@@ -21,13 +26,13 @@ app.get('/api/settings', (req, res) => {
     res.json(settings);
 });
 
-app.post('/api/bookings', (req, res) => {
-    const newBooking = { id: bookings.length + 1, ...req.body };
+app.post('/api/bookings', verifyToken, (req, res) => {
+    const newBooking = { id: bookings.length + 1, ...req.body, customerId: req.user.id };
     bookings.push(newBooking);
     res.status(201).json({ message: "Booking successful!", booking: newBooking });
 });
 
-app.put('/api/bookings/:id', (req, res) => {
+app.put('/api/bookings/:id', verifyToken, requireRole('Staff', 'Admin'), (req, res) => {
     const bookingId = parseInt(req.params.id);
     const bookingIndex = bookings.findIndex(b => b.id === bookingId);
 
@@ -39,12 +44,12 @@ app.put('/api/bookings/:id', (req, res) => {
     res.json({ message: "Booking updated", booking: bookings[bookingIndex] });
 });
 
-app.put('/api/settings', (req, res) => {
+app.put('/api/settings', verifyToken, requireRole('Admin'), (req, res) => {
     settings = { ...settings, ...req.body };
     res.json({ message: "Settings updated", settings });
 });
 
-app.delete('/api/bookings/:id', (req, res) => {
+app.delete('/api/bookings/:id', verifyToken, requireRole('Staff', 'Admin'), (req, res) => {
     bookings = bookings.filter(b => b.id !== parseInt(req.params.id));
     res.json({ message: "Booking deleted" });
 });
