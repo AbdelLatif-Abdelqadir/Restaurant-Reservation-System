@@ -34,6 +34,25 @@ describe('auth', () => {
     });
 });
 
+describe('notifications', () => {
+    test('creating a booking triggers a simulated confirmation (no SMTP configured in tests)', async () => {
+        const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+        const email = `notify-${Date.now()}@example.com`;
+        await request(app).post('/api/auth/register').send({ name: 'Notify Me', email, password: 'password123' });
+        const token = await loginAs(email, 'password123');
+
+        await request(app)
+            .post('/api/bookings')
+            .set('Authorization', `Bearer ${token}`)
+            .send({ name: 'Notify Me', email, phone: '1', date: '2026-08-05', time: '19:00', party_size: '2' });
+
+        const loggedConfirmation = logSpy.mock.calls.some(call => call[0]?.includes('[email simulated]') && call[0]?.includes(email));
+        expect(loggedConfirmation).toBe(true);
+
+        logSpy.mockRestore();
+    });
+});
+
 describe('bookings', () => {
     test('POST /api/bookings rejects requests without a token', async () => {
         const res = await request(app).post('/api/bookings').send({

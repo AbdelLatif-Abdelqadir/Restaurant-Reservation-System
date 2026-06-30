@@ -3,6 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const authRouter = require('./auth');
 const { verifyToken, requireRole } = require('./authMiddleware');
+const { sendBookingConfirmation, sendWaitlistConfirmation } = require('./notifications');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
@@ -72,6 +73,7 @@ app.post('/api/bookings', verifyToken, (req, res) => {
 
     const newBooking = { id: bookings.length + 1, ...req.body, customerId: req.user.id };
     bookings.push(newBooking);
+    sendBookingConfirmation(newBooking);
     res.status(201).json({ message: "Booking successful!", booking: newBooking });
 });
 
@@ -152,6 +154,7 @@ app.post('/api/waitlist', verifyToken, (req, res) => {
 
     const entry = { id: nextWaitlistId++, ...req.body, customerId: req.user.id, createdAt: new Date().toISOString() };
     waitlist.push(entry);
+    sendWaitlistConfirmation(entry);
     res.status(201).json({ message: "Added to the waitlist.", entry });
 });
 
@@ -193,6 +196,7 @@ app.post('/api/waitlist/:id/seat', verifyToken, requireRole('Staff', 'Admin'), (
     const newBooking = { id: bookings.length + 1, ...bookingData };
     bookings.push(newBooking);
     waitlist = waitlist.filter(w => w.id !== id);
+    sendBookingConfirmation(newBooking);
     res.status(201).json({ message: "Seated from waitlist.", booking: newBooking });
 });
 
