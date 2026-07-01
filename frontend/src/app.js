@@ -167,6 +167,12 @@ const styles = `
     color: var(--gold-dim);
     margin-bottom: 8px;
   }
+  .field-error {
+    color: var(--danger);
+    font-size: 11px;
+    margin-top: 5px;
+    font-weight: 300;
+  }
   .input, .select, .textarea {
     width: 100%;
     background: var(--surface);
@@ -185,6 +191,7 @@ const styles = `
     border-color: var(--gold-dim);
     box-shadow: 0 0 0 3px var(--gold-glow);
   }
+  .input.has-error, .select.has-error { border-color: var(--danger); }
   .input[type="date"] { color-scheme: dark; }
   .input[type="date"]::-webkit-datetime-edit { color: var(--cream); }
   .input[type="date"]::-webkit-datetime-edit-fields-wrapper { background: transparent; }
@@ -215,6 +222,7 @@ const styles = `
   }
   .time-btn:hover { border-color: var(--gold-dim); color: var(--cream); }
   .time-btn.selected { background: var(--gold-glow); border-color: var(--gold); color: var(--gold); }
+  .time-grid.has-error { outline: 1px solid var(--danger); }
 
   /* SUBMIT */
   .submit-btn {
@@ -314,6 +322,7 @@ const styles = `
     flex-shrink: 0;
   }
   .delete-btn:hover { color: var(--danger); }
+  .delete-btn:disabled { opacity: 0.4; cursor: not-allowed; }
   .action-btn {
     background: transparent;
     border: 1px solid var(--gold-dim);
@@ -327,14 +336,15 @@ const styles = `
     transition: all 0.15s;
   }
   .action-btn:hover { border-color: var(--gold); background: var(--gold-glow); }
+  .action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
   /* ADMIN */
   .settings-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
   @media (max-width: 768px) { .settings-grid { grid-template-columns: 1fr; } }
 
   /* STATS */
-  .stats { display: flex; gap: 24px; margin-bottom: 24px; }
-  .stat { flex: 1; text-align: center; padding: 16px; border: 1px solid var(--border); }
+  .stats { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 24px; }
+  .stat { flex: 1; min-width: 80px; text-align: center; padding: 16px; border: 1px solid var(--border); }
   .stat-value { font-family: var(--ff-display); font-size: 32px; font-weight: 300; color: var(--gold); }
   .stat-label { font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted); margin-top: 4px; }
 
@@ -379,10 +389,10 @@ const styles = `
   .day-row-empty { padding: 12px 16px; font-size: 12px; color: var(--muted); font-style: italic; }
 
   /* WEEK VIEW */
-  .week-table-wrap { overflow-x: auto; }
-  .week-table { border-collapse: collapse; width: 100%; min-width: 640px; }
-  .week-table th, .week-table td { border: 1px solid var(--border); padding: 8px; text-align: center; font-size: 12px; }
-  .week-table th { background: var(--surface); color: var(--gold-dim); font-weight: 300; letter-spacing: 0.08em; }
+  .week-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .week-table { border-collapse: collapse; width: 100%; min-width: 560px; }
+  .week-table th, .week-table td { border: 1px solid var(--border); padding: 8px 4px; text-align: center; font-size: 11px; }
+  .week-table th { background: var(--surface); color: var(--gold-dim); font-weight: 300; letter-spacing: 0.08em; white-space: nowrap; }
   .week-time-label { color: var(--muted); white-space: nowrap; }
   .week-cell { cursor: pointer; color: var(--muted); transition: background 0.15s; }
   .week-cell:hover { background: var(--gold-glow); }
@@ -398,6 +408,7 @@ const styles = `
     padding: 14px 16px;
     border: 1px solid var(--border);
     margin-bottom: 10px;
+    flex-wrap: wrap;
   }
   .waitlist-info { font-size: 13px; color: var(--cream); }
   .waitlist-meta { font-size: 11px; color: var(--muted); margin-top: 4px; }
@@ -409,7 +420,7 @@ const styles = `
     margin-bottom: 20px;
   }
   .waitlist-prompt p { font-size: 13px; color: var(--cream); margin-bottom: 12px; }
-  .waitlist-prompt-actions { display: flex; gap: 10px; }
+  .waitlist-prompt-actions { display: flex; gap: 10px; flex-wrap: wrap; }
 
   /* FOOTER */
   .footer {
@@ -421,6 +432,16 @@ const styles = `
     text-transform: uppercase;
     border-top: 1px solid var(--border);
   }
+
+  /* MOBILE */
+  @media (max-width: 480px) {
+    .panel { padding: 24px 20px; }
+    .time-grid { grid-template-columns: repeat(2, 1fr); }
+    .row { grid-template-columns: 1fr; }
+    .compact-row { grid-template-columns: 1fr 1fr; }
+    .compact-row .action-btn { grid-column: 1 / -1; }
+    .booking-meta { gap: 8px; }
+  }
 `;
 
 export default function App() {
@@ -428,6 +449,8 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState({});
+  const [fieldErrors, setFieldErrors] = useState({});
   const [token, setToken] = useState(() => localStorage.getItem("token") || null);
   const [user, setUser] = useState(() => {
     try {
@@ -521,14 +544,20 @@ export default function App() {
     }
   }, [user, fetchBookings, fetchSettings, fetchWaitlist]);
 
-  const handleField = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const handleField = (k, v) => {
+    setForm(f => ({ ...f, [k]: v }));
+    if (fieldErrors[k]) setFieldErrors(prev => { const next = { ...prev }; delete next[k]; return next; });
+  };
 
   const handleSubmit = async () => {
     const required = ["name", "email", "phone", "date", "time", "party_size"];
-    if (required.some(k => !form[k])) {
-      showToast("Please fill in all required fields.", "error");
+    const errors = {};
+    required.forEach(k => { if (!form[k]) errors[k] = "This field is required."; });
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
       return;
     }
+    setFieldErrors({});
     setLoading(true);
     setWaitlistPrompt(null);
     try {
@@ -560,6 +589,7 @@ export default function App() {
 
   const handleJoinWaitlist = async () => {
     if (!waitlistPrompt) return;
+    setBusy(b => ({ ...b, waitlistJoin: true }));
     try {
       const res = await authedFetch(WAITLIST_API, {
         method: "POST",
@@ -577,18 +607,23 @@ export default function App() {
       setForm({ name: "", email: "", phone: "", date: "", time: "", party_size: "", occasion: "None", notes: "", special_requests: "" });
     } catch {
       showToast("Cannot connect to server.", "error");
+    } finally {
+      setBusy(b => { const n = { ...b }; delete n.waitlistJoin; return n; });
     }
   };
 
   const handleRemoveWaitlist = async (id) => {
+    setBusy(b => ({ ...b, [`removeWl-${id}`]: true }));
     try {
       await authedFetch(`${WAITLIST_API}/${id}`, { method: "DELETE" });
     } catch {}
     setWaitlist(prev => prev.filter(w => w.id !== id));
     showToast("Removed from waitlist.", "error");
+    setBusy(b => { const n = { ...b }; delete n[`removeWl-${id}`]; return n; });
   };
 
   const handleSeatFromWaitlist = async (entry) => {
+    setBusy(b => ({ ...b, [`seat-${entry.id}`]: true }));
     try {
       const res = await authedFetch(`${WAITLIST_API}/${entry.id}/seat`, { method: "POST" });
       const data = await res.json();
@@ -601,15 +636,19 @@ export default function App() {
       showToast(`Seated ${entry.name} from the waitlist.`);
     } catch {
       showToast("Cannot connect to server.", "error");
+    } finally {
+      setBusy(b => { const n = { ...b }; delete n[`seat-${entry.id}`]; return n; });
     }
   };
 
   const handleDelete = async (id) => {
+    setBusy(b => ({ ...b, [`delete-${id}`]: true }));
     try {
       await authedFetch(`${API}/${id}`, { method: "DELETE" });
     } catch {}
     setBookings(prev => prev.filter(b => b.id !== id));
     showToast("Reservation cancelled.", "error");
+    setBusy(b => { const n = { ...b }; delete n[`delete-${id}`]; return n; });
   };
 
   const handleEditField = (id, key, value) => {
@@ -622,6 +661,7 @@ export default function App() {
   const handleUpdateBooking = async (booking) => {
     const changes = editing[booking.id] || {};
     const updatedBooking = { ...booking, ...changes };
+    setBusy(b => ({ ...b, [`update-${booking.id}`]: true }));
 
     try {
       const res = await authedFetch(`${API}/${booking.id}`, {
@@ -637,6 +677,8 @@ export default function App() {
       setBookings(prev => prev.map(b => b.id === booking.id ? data.booking : b));
     } catch {
       setBookings(prev => prev.map(b => b.id === booking.id ? updatedBooking : b));
+    } finally {
+      setBusy(b => { const n = { ...b }; delete n[`update-${booking.id}`]; return n; });
     }
 
     setEditing(prev => {
@@ -652,6 +694,7 @@ export default function App() {
   };
 
   const handleSaveSettings = async () => {
+    setBusy(b => ({ ...b, settings: true }));
     try {
       const res = await authedFetch(SETTINGS_API, {
         method: "PUT",
@@ -667,6 +710,8 @@ export default function App() {
       showToast("Restaurant settings saved.");
     } catch {
       showToast("Cannot connect to server.", "error");
+    } finally {
+      setBusy(b => { const n = { ...b }; delete n.settings; return n; });
     }
   };
 
@@ -706,7 +751,14 @@ export default function App() {
           <div className="booking-name">{b.name}</div>
           <div className="booking-id">#{String(b.id).padStart(4, "0")}</div>
         </div>
-        <button className="delete-btn" onClick={() => handleDelete(b.id)} title="Cancel reservation">×</button>
+        <button
+          className="delete-btn"
+          onClick={() => handleDelete(b.id)}
+          disabled={!!busy[`delete-${b.id}`]}
+          title="Cancel reservation"
+        >
+          {busy[`delete-${b.id}`] ? "…" : "×"}
+        </button>
       </div>
       <div className="booking-meta">
         <span className="meta-chip"><span className="icon">📅</span>{b.date}</span>
@@ -731,7 +783,13 @@ export default function App() {
             {PARTY_SIZES.map(n => <option key={n} value={n}>{n}</option>)}
           </select>
         </div>
-        <button className="action-btn" onClick={() => handleUpdateBooking(b)}>Update</button>
+        <button
+          className="action-btn"
+          onClick={() => handleUpdateBooking(b)}
+          disabled={!!busy[`update-${b.id}`]}
+        >
+          {busy[`update-${b.id}`] ? "Saving…" : "Update"}
+        </button>
       </div>
     </div>
   );
@@ -775,7 +833,9 @@ export default function App() {
               <div className="waitlist-prompt">
                 <p>{waitlistPrompt.message} Would you like to join the waitlist for this slot?</p>
                 <div className="waitlist-prompt-actions">
-                  <button className="action-btn" onClick={handleJoinWaitlist}>Join Waitlist</button>
+                  <button className="action-btn" onClick={handleJoinWaitlist} disabled={busy.waitlistJoin}>
+                    {busy.waitlistJoin ? "Adding…" : "Join Waitlist"}
+                  </button>
                   <button className="action-btn" onClick={() => setWaitlistPrompt(null)}>Dismiss</button>
                 </div>
               </div>
@@ -783,41 +843,74 @@ export default function App() {
 
             <div className="field">
               <label className="label">Full Name *</label>
-              <input className="input" placeholder="Jean-Pierre Moreau" value={form.name} onChange={e => handleField("name", e.target.value)} />
+              <input
+                className={`input${fieldErrors.name ? " has-error" : ""}`}
+                placeholder="Jean-Pierre Moreau"
+                value={form.name}
+                onChange={e => handleField("name", e.target.value)}
+              />
+              {fieldErrors.name && <p className="field-error">{fieldErrors.name}</p>}
             </div>
 
             <div className="row">
               <div className="field">
                 <label className="label">Email *</label>
-                <input className="input" type="email" placeholder="guest@email.com" value={form.email} onChange={e => handleField("email", e.target.value)} />
+                <input
+                  className={`input${fieldErrors.email ? " has-error" : ""}`}
+                  type="email"
+                  placeholder="guest@email.com"
+                  value={form.email}
+                  onChange={e => handleField("email", e.target.value)}
+                />
+                {fieldErrors.email && <p className="field-error">{fieldErrors.email}</p>}
               </div>
               <div className="field">
                 <label className="label">Phone *</label>
-                <input className="input" type="tel" placeholder="+1 555 000 0000" value={form.phone} onChange={e => handleField("phone", e.target.value)} />
+                <input
+                  className={`input${fieldErrors.phone ? " has-error" : ""}`}
+                  type="tel"
+                  placeholder="+1 555 000 0000"
+                  value={form.phone}
+                  onChange={e => handleField("phone", e.target.value)}
+                />
+                {fieldErrors.phone && <p className="field-error">{fieldErrors.phone}</p>}
               </div>
             </div>
 
             <div className="row">
               <div className="field">
                 <label className="label">Date *</label>
-                <input className="input" type="date" min={today} value={form.date} onChange={e => handleField("date", e.target.value)} />
+                <input
+                  className={`input${fieldErrors.date ? " has-error" : ""}`}
+                  type="date"
+                  min={today}
+                  value={form.date}
+                  onChange={e => handleField("date", e.target.value)}
+                />
+                {fieldErrors.date && <p className="field-error">{fieldErrors.date}</p>}
               </div>
               <div className="field">
                 <label className="label">Party Size *</label>
-                <select className="select" value={form.party_size} onChange={e => handleField("party_size", e.target.value)}>
+                <select
+                  className={`select${fieldErrors.party_size ? " has-error" : ""}`}
+                  value={form.party_size}
+                  onChange={e => handleField("party_size", e.target.value)}
+                >
                   <option value="">Guests</option>
                   {PARTY_SIZES.map(n => <option key={n} value={n}>{n} {n === 1 ? "Guest" : "Guests"}</option>)}
                 </select>
+                {fieldErrors.party_size && <p className="field-error">{fieldErrors.party_size}</p>}
               </div>
             </div>
 
             <div className="field">
               <label className="label">Preferred Time *</label>
-              <div className="time-grid">
+              <div className={`time-grid${fieldErrors.time ? " has-error" : ""}`}>
                 {availableTimes.map(t => (
                   <button key={t} className={`time-btn ${form.time === t ? "selected" : ""}`} onClick={() => handleField("time", t)}>{t}</button>
                 ))}
               </div>
+              {fieldErrors.time && <p className="field-error">{fieldErrors.time}</p>}
             </div>
 
             <div className="field">
@@ -868,8 +961,8 @@ export default function App() {
               </div>
             </div>
 
-            <button className="submit-btn" onClick={handleSaveSettings}>
-              <span>Save Settings</span>
+            <button className="submit-btn" onClick={handleSaveSettings} disabled={busy.settings}>
+              <span>{busy.settings ? "Saving…" : "Save Settings"}</span>
             </button>
           </div>
           )}
@@ -907,8 +1000,21 @@ export default function App() {
                       <div className="waitlist-meta">{w.date} at {w.time}</div>
                     </div>
                     <div className="waitlist-actions">
-                      <button className="action-btn" onClick={() => handleSeatFromWaitlist(w)}>Seat Now</button>
-                      <button className="delete-btn" onClick={() => handleRemoveWaitlist(w.id)} title="Remove from waitlist">×</button>
+                      <button
+                        className="action-btn"
+                        onClick={() => handleSeatFromWaitlist(w)}
+                        disabled={!!busy[`seat-${w.id}`]}
+                      >
+                        {busy[`seat-${w.id}`] ? "Seating…" : "Seat Now"}
+                      </button>
+                      <button
+                        className="delete-btn"
+                        onClick={() => handleRemoveWaitlist(w.id)}
+                        disabled={!!busy[`removeWl-${w.id}`]}
+                        title="Remove from waitlist"
+                      >
+                        {busy[`removeWl-${w.id}`] ? "…" : "×"}
+                      </button>
                     </div>
                   </div>
                 ))}
