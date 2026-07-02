@@ -2,9 +2,7 @@
 
 A full-stack web app for managing restaurant reservations, built as a university final project.
 
-**Live demo:** https://rrsfinal.vercel.app
-
-Frontend deployment URL - restaurant-reservation-system-jfejl9jhu-burgerbonanza.vercel.app
+Frontend deployment URL **Live demo:** https://rrsfinal.vercel.app
 
 Backend deployment URL - https://restaurant-reservation-system-83uv.onrender.com
 
