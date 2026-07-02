@@ -771,6 +771,7 @@ export default function App() {
       {b.occasion && b.occasion !== "None" && <div className="occasion-tag">{b.occasion}</div>}
       {b.special_requests && <p className="notes-text">"{b.special_requests}"</p>}
       {b.notes && <p className="notes-text">Kitchen: {b.notes}</p>}
+      {canManageReservations && (
       <div className="compact-row">
         <div>
           <label className="label">Time</label>
@@ -792,6 +793,7 @@ export default function App() {
           {busy[`update-${b.id}`] ? "Saving…" : "Update"}
         </button>
       </div>
+      )}
     </div>
   );
 
