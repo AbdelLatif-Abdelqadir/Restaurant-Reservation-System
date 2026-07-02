@@ -181,11 +181,21 @@ app.put('/api/settings', verifyToken, requireRole('Admin'), async (req, res, nex
     }
 });
 
-app.delete('/api/bookings/:id', verifyToken, requireRole('Staff', 'Admin'), async (req, res, next) => {
+app.delete('/api/bookings/:id', verifyToken, async (req, res, next) => {
     try {
-        if (mongoose.isValidObjectId(req.params.id)) {
-            await Booking.deleteOne({ _id: req.params.id });
+        if (!mongoose.isValidObjectId(req.params.id)) {
+            return res.status(404).json({ message: "Booking not found." });
         }
+
+        const booking = await Booking.findById(req.params.id);
+        if (!booking) {
+            return res.status(404).json({ message: "Booking not found." });
+        }
+        if (!isStaffOrAdmin(req.user.role) && booking.customerId !== req.user.id) {
+            return res.status(403).json({ message: "You do not have permission to cancel this reservation." });
+        }
+
+        await Booking.deleteOne({ _id: req.params.id });
         res.json({ message: "Booking deleted" });
     } catch (err) {
         next(err);

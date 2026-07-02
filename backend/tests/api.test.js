@@ -118,4 +118,41 @@ describe('bookings', () => {
         expect(update.status).toBe(200);
         expect(update.body.booking.time).toBe('20:00');
     });
+
+    test('DELETE /api/bookings/:id lets a Customer cancel their own reservation', async () => {
+        const email = `self-cancel-${Date.now()}@example.com`;
+        await request(app).post('/api/auth/register').send({ name: 'Self Cancel', email, password: 'password123' });
+        const token = await loginAs(email, 'password123');
+
+        const created = await request(app)
+            .post('/api/bookings')
+            .set('Authorization', `Bearer ${token}`)
+            .send({ name: 'Self Cancel', email, phone: '1', date: '2026-08-06', time: '19:00', party_size: '2' });
+
+        const del = await request(app)
+            .delete(`/api/bookings/${created.body.booking.id}`)
+            .set('Authorization', `Bearer ${token}`);
+
+        expect(del.status).toBe(200);
+    });
+
+    test('DELETE /api/bookings/:id forbids a Customer from cancelling another guest\'s reservation', async () => {
+        const emailA = `owner-${Date.now()}@example.com`;
+        const emailB = `other-${Date.now()}@example.com`;
+        await request(app).post('/api/auth/register').send({ name: 'Owner', email: emailA, password: 'password123' });
+        await request(app).post('/api/auth/register').send({ name: 'Other', email: emailB, password: 'password123' });
+        const tokenA = await loginAs(emailA, 'password123');
+        const tokenB = await loginAs(emailB, 'password123');
+
+        const created = await request(app)
+            .post('/api/bookings')
+            .set('Authorization', `Bearer ${tokenA}`)
+            .send({ name: 'Owner', email: emailA, phone: '1', date: '2026-08-07', time: '19:00', party_size: '2' });
+
+        const del = await request(app)
+            .delete(`/api/bookings/${created.body.booking.id}`)
+            .set('Authorization', `Bearer ${tokenB}`);
+
+        expect(del.status).toBe(403);
+    });
 });
