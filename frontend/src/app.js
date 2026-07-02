@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import Auth from "./Auth";
 
-const BASE = process.env.REACT_APP_API_URL || "http://localhost:5000";
+const BASE = (process.env.REACT_APP_API_URL || "http://localhost:5000").replace(/\/$/, "");
 const API = `${BASE}/api/bookings`;
 const SETTINGS_API = `${BASE}/api/settings`;
 const WAITLIST_API = `${BASE}/api/waitlist`;
