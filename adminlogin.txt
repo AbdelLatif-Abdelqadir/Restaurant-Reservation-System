@@ -1,2 +1,3 @@
 Admin: admin@bb.com / admin
 Staff: staff@bb.com / staff
+Guest: guest@gmail.com / Guest123!
